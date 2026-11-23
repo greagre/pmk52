@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pmk52 — контрольные тесты</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin:0; padding:16px 12px 40px; font:15px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:#f6f7f8; color:#1a1d21; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:#5b636c; font-size:13px; margin:0 0 14px; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 14px; }
+  button { font:inherit; font-weight:600; padding:10px 18px; border-radius:10px; border:0; background:#2f6bdb; color:#fff; }
+  button:active { background:#255ab9; }
+  .sum { font-weight:700; }
+  .ok { color:#1a7f4b; }
+  .bad { color:#b3261e; }
+  .warn { background:#fff3cd; border:1px solid #e0c068; border-radius:10px; padding:10px 12px; margin:0 0 14px; font-size:13px; }
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:13px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #e6e9ec; vertical-align:top; }
+  th { background:#eef1f4; font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:#4c555e; }
+  td.mono { font-family:ui-monospace, "SF Mono", Consolas, monospace; font-size:12px; }
+  tr.bad td { background:#fdf1f0; }
+  .mark { font-weight:700; text-align:center; width:28px; }
+  .note { margin:18px 0 0; color:#5b636c; font-size:12px; }
+</style>
+</head>
+<body>
+<h1>pmk52 — контрольные тесты</h1>
+<p class="sub">Линия Б3-34 и МК-52 на одном ядре. Проверяются команды и пределы моделей, а не интерфейс.</p>
+
+<div id="stale"></div>
+
+<div class="bar">
+  <button id="run">Прогнать все</button>
+  <span class="sum" id="sum"></span>
+</div>
+
+<table>
+  <thead>
+    <tr><th class="mark"></th><th>Кейс</th><th>Модель</th><th>Программа</th><th>Ожидание</th><th>Факт</th></tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<p class="note">Прогон выполняется в браузере, ничего никуда не отправляется. Если таблица не заполнилась — проверь, что рядом лежат <code>core.js</code> и <code>profiles.js</code>.</p>
+
+<script src="profiles.js?v=5"></script>
+<script src="core.js?v=5"></script>
+<script>
+(function () {
+  'use strict';
+
+  var rowsEl = document.getElementById('rows');
+  var sumEl = document.getElementById('sum');
+  var staleEl = document.getElementById('stale');
+
+  function fmt(v) {
+    if (v === null || v === undefined) return '—';
+    if (typeof v !== 'number' || !isFinite(v)) return String(v);
+    if (Object.is(v, -0)) return '-0';
+    var s = Math.abs(v) >= 1e8 || (Math.abs(v) < 1e-6 && v !== 0)
+      ? v.toExponential(6)
+      : String(Math.round(v * 1e8) / 1e8);
+    return s.replace('.', ',');
+  }
+
+  function codeStr(prog) {
+    var chars = '0123456789-LCDE ';
+    return prog.map(function (b) {
+      var hi = b >> 4, lo = b & 0xF;
+      return chars.charAt(hi) + chars.charAt(lo);
+    }).join(' ');
+  }
+
+  function profile(name) {
+    if (!window.MKProfiles) return null;
+    if (typeof MKProfiles.get === 'function') return MKProfiles.get(name);
+    var all = MKProfiles.PROFILES || MKProfiles;
+    return all[name] || null;
+  }
+
+  // Статическая проверка: не загрузилась ли старая копия файлов из кэша.
+  function checkFresh() {
+    var bad = [];
+    if (!window.MKCore || !window.MKProfiles) {
+      staleEl.innerHTML = '<div class="warn">Не удалось загрузить <code>core.js</code> или <code>profiles.js</code>. Проверь, что файлы лежат рядом со страницей.</div>';
+      return false;
+    }
+    var p52 = profile('mk-52');
+    if (p52 && p52.progLen !== 105) bad.push('в profiles.js у mk-52 progLen = ' + p52.progLen + ', ожидалось 105');
+    if (typeof MKProfiles.formatAddr === 'function') {
+      var a = MKProfiles.formatAddr(104, 'mk-52');
+      if (a !== '-4') bad.push('formatAddr(104, mk-52) = "' + a + '", ожидалось "-4"');
+    }
+    if (bad.length) {
+      staleEl.innerHTML = '<div class="warn"><b>Загружена старая копия файлов.</b><br>' +
+        bad.join('<br>') + '<br>Обнови страницу с очисткой кэша.</div>';
+      return false;
+    }
+    return true;
+  }
+
+  var cases = [
+    {
+      name: 'Сложение 2 + 3', model: 'b3-34', prog: [0x02, 0x0E, 0x03, 0x10, 0x50],
+      expect: { x: 5 }
+    },
+    {
+      name: 'Умножение 2 × 3', model: 'b3-34', prog: [0x02, 0x0E, 0x03, 0x12, 0x50],
+      expect: { x: 6 }
+    },
+    {
+      name: 'Вычитание 9 − 4', model: 'b3-34', prog: [0x09, 0x0E, 0x04, 0x11, 0x50],
+      expect: { x: 5 }
+    },
+    {
+      name: 'Деление на ноль 1 ÷ 0', model: 'b3-34', prog: [0x01, 0x0E, 0x00, 0x13, 0x50],
+      expect: { err: true }
+    },
+    {
+      name: 'Ввод двух цифр подряд', model: 'b3-34', prog: [0x02, 0x03, 0x50],
+      expect: { x: 23 }
+    },
+    {
+      name: 'Стоп по С/П', model: 'b3-34', prog: [0x05, 0x50],
+      expect: { x: 5 }
+    },
+    {
+      name: 'Б3-34: K |x| даёт ЕГГ0Г', model: 'b3-34', prog: [0x31, 0x50], x: -5,
+      expect: { err: true }
+    },
+    {
+      name: 'Б3-34: K °→′″ даёт ЕГГ0Г', model: 'b3-34', prog: [0x2A, 0x50], x: 1.523,
+      expect: { err: true }
+    },
+    {
+      name: 'МК-52: K |x| при X = −5', model: 'mk-52', prog: [0x31, 0x50], x: -5,
+      expect: { x: 5 }
+    },
+    {
+      name: 'МК-52: K °→′″ при X = 1,523', model: 'mk-52', prog: [0x2A, 0x50], x: 1.523,
+      expect: { x: 1.875 }
+    },
+    {
+      name: 'МК-52: K °←′″ при X = 1,875', model: 'mk-52', prog: [0x30, 0x50], x: 1.875,
+      expect: { x: 1.523 }
+    },
+    {
+      name: 'Б3-34: программа не длиннее 98 шагов', model: 'b3-34', prog: [], meta: 'progLen',
+      expect: { meta: 'progLen', value: 98 }
+    },
+    {
+      name: 'МК-52: программа 105 шагов', model: 'mk-52', prog: [], meta: 'progLen',
+      expect: { meta: 'progLen', value: 105 }
+    },
+    {
+      name: 'Формат адреса 104 у МК-52', model: 'mk-52', prog: [], meta: 'addr',
+      expect: { meta: 'addr', value: '-4' }
+    },
+    {
+      name: 'Формат адреса 100 у Б3-34', model: 'b3-34', prog: [], meta: 'addr100',
+      expect: { meta: 'addr100', value: '100' }
+    },
+    {
+      name: 'Переход на адрес −4 у Б3-34 запрещён', model: 'b3-34', prog: [0x51, 0x0A, 0x04],
+      expect: { err: true }
+    },
+    {
+      name: 'Переход на адрес 10 у Б3-34', model: 'b3-34', prog: [0x51, 0x01, 0x00, 0x50],
+      expect: { err: false }
+    },
+    {
+      name: 'Б3-34: 14 регистров, R0…Rd', model: 'b3-34', prog: [], meta: 'regCount',
+      expect: { meta: 'regCount', value: 14 }
+    },
+    {
+      name: 'МК-52: 15 регистров', model: 'mk-52', prog: [], meta: 'regCount',
+      expect: { meta: 'regCount', value: 15 }
+    }
+  ];
+
+  function runCase(c) {
+    var p = profile(c.model);
+    if (!p) return { text: 'нет профиля ' + c.model, err: false };
+
+    if (c.meta === 'progLen') {
+      return { text: p.progLen, meta: true };
+    }
+    if (c.meta === 'regCount') {
+      return { text: p.regCount, meta: true };
+    }
+    if (c.meta === 'addr') {
+      return { text: MKProfiles.formatAddr(104, c.model), meta: true };
+    }
+    if (c.meta === 'addr100') {
+      return { text: MKProfiles.formatAddr(100, c.model), meta: true };
+    }
+
+    var ct;
+    try {
+      ct = MKCore.create(p);
+      ct.setProgram(c.prog);
+      if (c.x !== undefined) ct.setX(c.x);
+      ct.run(500);
+    } catch (e) {
+      return { text: 'сбой: ' + e.message, err: true };
+    }
+
+    var st = ct.ST || {};
+    var hasErr = !!(st.error || st.err);
+    if (hasErr) return { text: 'ЕГГ0Г', err: true };
+    return { text: 'X = ' + fmt(st.X), x: st.X, err: false };
+  }
+
+  function passes(c, got) {
+    var e = c.expect;
+    if (e.meta) return String(got.text) === String(e.value);
+    if (e.err) return got.err === true;
+    if (e.x !== undefined) return !got.err && Math.abs((got.x || 0) - e.x) < 1e-6;
+    return false;
+  }
+
+  function expectText(c) {
+    var e = c.expect;
+    if (e.meta) return String(e.value);
+    if (e.err) return 'ЕГГ0Г';
+    if (e.x !== undefined) return 'X = ' + fmt(e.x);
+    return '—';
+  }
+
+  function run() {
+    checkFresh();
+    rowsEl.innerHTML = '';
+    var passed = 0;
+
+    cases.forEach(function (c) {
+      var got = runCase(c);
+      var ok = passes(c, got);
+      if (ok) passed++;
+
+      var tr = document.createElement('tr');
+      if (!ok) tr.className = 'bad';
+      tr.innerHTML =
+        '<td class="mark ' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓' : '✗') + '</td>' +
+        '<td>' + c.name + '</td>' +
+        '<td>' + c.model + '</td>' +
+        '<td class="mono">' + (c.prog.length ? codeStr(c.prog) : '—') + '</td>' +
+        '<td>' + expectText(c) + '</td>' +
+        '<td>' + got.text + '</td>';
+      rowsEl.appendChild(tr);
+    });
+
+    sumEl.textContent = 'Пройдено ' + passed + ' из ' + cases.length;
+    sumEl.className = 'sum ' + (passed === cases.length ? 'ok' : 'bad');
+  }
+
+  document.getElementById('run').addEventListener('click', run);
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+})();
+</script>
+</body>
+</html>
