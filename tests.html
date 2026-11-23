@@ -17,11 +17,13 @@
   .bad { color:#b3261e; }
   .warn { background:#fff3cd; border:1px solid #e0c068; border-radius:10px; padding:10px 12px; margin:0 0 14px; font-size:13px; }
   .hintbox { background:#eef4ff; border:1px solid #c4d6f5; border-radius:10px; padding:10px 12px; margin:0 0 14px; font-size:13px; }
+  .debt { background:#f4f1fb; border:1px solid #cdc2ec; border-radius:10px; padding:10px 12px; margin:0 0 14px; font-size:13px; }
   table { width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:13px; }
   th, td { text-align:left; padding:9px 8px; border-bottom:1px solid #e6e9ec; vertical-align:top; }
   th { background:#eef1f4; font-size:12px; text-transform:uppercase; letter-spacing:.03em; color:#4c555e; }
   td.mono { font-family:ui-monospace, "SF Mono", Consolas, monospace; font-size:12px; }
   tr.bad td { background:#fdf1f0; }
+  tr.known td { background:#f6f2fd; }
   .mark { font-weight:700; text-align:center; width:28px; }
   .note { margin:18px 0 0; color:#5b636c; font-size:12px; }
 </style>
@@ -38,6 +40,11 @@
   (вторая запись — это адрес 40). Адреса выше 99 у МК-52: первая ячейка <span style="font-family:ui-monospace,monospace">0A</span> («•»), вторая — цифра 0…4, то есть «-0»…«-4».
 </div>
 
+<div class="debt">
+  <b>Известное расхождение с оригиналом.</b> Клавиша X→П не завершает набор числа: набрал 5, нажал X→П, нажал 7 — в ядре получается 57, у настоящего ПМК было бы 7.
+  Кейс-долг внизу таблицы помечен фиолетовым и в счёт не входит. Поведение ядра пока не менялось.
+</div>
+
 <div class="bar">
   <button id="run">Прогнать все</button>
   <span class="sum" id="sum"></span>
@@ -52,8 +59,8 @@
 
 <p class="note">Прогон выполняется в браузере, ничего никуда не отправляется. Если таблица не заполнилась — проверь, что рядом лежат <code>core.js</code> и <code>profiles.js</code>.</p>
 
-<script src="profiles.js?v=8"></script>
-<script src="core.js?v=8"></script>
+<script src="profiles.js?v=9"></script>
+<script src="core.js?v=9"></script>
 <script>
 (function () {
   'use strict';
@@ -214,11 +221,38 @@
       about: 'ложь → переход на 5, там цифра 7',
       expect: { x: 7 }
     },
+
+    /* ---- косвенные условные переходы (0x70 / 0x90) ---- */
+    {
+      name: 'K x≠0 при X = 0: переход по адресу из R1', model: 'b3-34',
+      prog: [0x0D, 0x71, 0x10, 0x00, 0x07, 0x50], regs: { 1: 5 },
+      about: 'ложь → modAddr(5, 1) = 4, там цифра 7; при истине пошли бы на 0x10 (+)',
+      expect: { x: 7 }
+    },
+    {
+      name: 'K x≠0 при X = 5: адрес не воспринимается', model: 'b3-34',
+      prog: [0x71, 0x22, 0x50], regs: { 1: 5 }, x: 5,
+      about: 'истина → сразу следующая команда x², R1 не трогается',
+      expect: { x: 25 }
+    },
+    {
+      name: 'K x≥0 при X = −3: переход по адресу из R1', model: 'b3-34',
+      prog: [0x91, 0x0D, 0x50, 0x07, 0x50], regs: { 1: 4 }, x: -3,
+      about: 'ложь → modAddr(4, 1) = 3, там цифра 7',
+      expect: { x: 7 }
+    },
+
     {
       name: 'Ввод после X→П продолжается (так в ядре)', model: 'b3-34',
       prog: [0x05, 0x41, 0x07, 0x50],
       about: 'X→П не завершает набор: 5, затем 7 дают 57',
       expect: { x: 57 }
+    },
+    {
+      name: 'X→П завершает набор (долг: как у оригинала)', model: 'b3-34', known: true,
+      prog: [0x05, 0x41, 0x07, 0x50],
+      about: 'у настоящего ПМК после X→П цифра 7 начинает новое число → X = 7',
+      expect: { x: 7 }
     }
   ];
 
@@ -251,6 +285,11 @@
     try {
       ct = MKCore.create(p);
       ct.setProgram(c.prog);
+      if (c.regs) {
+        Object.keys(c.regs).forEach(function (k) {
+          ct.setRegister(Number(k), c.regs[k]);
+        });
+      }
       if (c.x !== undefined) ct.setX(c.x);
       ct.run(c.limit || 500);
     } catch (e) {
@@ -291,18 +330,37 @@
   function run() {
     checkFresh();
     rowsEl.innerHTML = '';
-    var passed = 0;
+    var passed = 0, total = 0, debt = 0, debtClosed = 0;
 
     cases.forEach(function (c) {
       var got = runCase(c);
       var ok = passes(c, got);
-      if (ok) passed++;
+
+      if (c.known) {
+        debt++;
+        if (ok) debtClosed++;
+      } else {
+        total++;
+        if (ok) passed++;
+      }
 
       var tr = document.createElement('tr');
-      if (!ok) tr.className = 'bad';
+      if (c.known) {
+        tr.className = 'known';
+      } else if (!ok) {
+        tr.className = 'bad';
+      }
+
+      var mark;
+      if (c.known) mark = ok ? '✓' : '!';
+      else mark = ok ? '✓' : '✗';
+
+      var noteBlock = c.about ? '<br><span style="color:#6b7280;font-size:12px">' + c.about + '</span>' : '';
+      if (c.known) noteBlock += '<br><span style="color:#7c5cbf;font-size:12px">долг: ' + (ok ? 'уже закрыт' : 'ещё не исправлено') + '</span>';
+
       tr.innerHTML =
-        '<td class="mark ' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓' : '✗') + '</td>' +
-        '<td>' + c.name + (c.about ? '<br><span style="color:#6b7280;font-size:12px">' + c.about + '</span>' : '') + '</td>' +
+        '<td class="mark ' + (ok ? 'ok' : (c.known ? '' : 'bad')) + '">' + mark + '</td>' +
+        '<td>' + c.name + noteBlock + '</td>' +
         '<td>' + c.model + '</td>' +
         '<td class="mono">' + (c.prog && c.prog.length ? codeStr(c.prog) : '—') + '</td>' +
         '<td>' + expectText(c) + '</td>' +
@@ -310,8 +368,10 @@
       rowsEl.appendChild(tr);
     });
 
-    sumEl.textContent = 'Пройдено ' + passed + ' из ' + cases.length;
-    sumEl.className = 'sum ' + (passed === cases.length ? 'ok' : 'bad');
+    var txt = 'Пройдено ' + passed + ' из ' + total;
+    if (debt) txt += ' · долг: ' + (debt - debtClosed) + ' из ' + debt;
+    sumEl.textContent = txt;
+    sumEl.className = 'sum ' + (passed === total ? 'ok' : 'bad');
   }
 
   document.getElementById('run').addEventListener('click', run);
