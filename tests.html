@@ -61,8 +61,8 @@
 
 <p class="note">Прогон выполняется в браузере, ничего никуда не отправляется. Если таблица не заполнилась — проверь, что рядом лежат <code>core.js</code> и <code>profiles.js</code>.</p>
 
-<script src="profiles.js?v=10"></script>
-<script src="core.js?v=10"></script>
+<script src="profiles.js?v=11"></script>
+<script src="core.js?v=11"></script>
 <script>
 (function () {
   'use strict';
@@ -282,7 +282,7 @@
       expect: { x: 7 }
     },
 
-    /* ---- косвенные условия: ветка «истина» для 0x90, обе для 0xC0 и 0xE0 ---- */
+    /* ---- косвенные условия: обе ветки для 0x90, 0xC0 и 0xE0 ---- */
     {
       name: 'K x≥0 при X = 5: условие выполнено', model: 'b3-34',
       prog: [0x90, 0x22, 0x50], regs: { 1: 5 }, x: 5,
@@ -302,10 +302,10 @@
       expect: { x: 25 }
     },
     {
-      name: 'K x=0 при X = 0: условие выполнено', model: 'b3-34',
-      prog: [0x0D, 0xE1, 0x22, 0x07, 0x50], regs: { 1: 4 },
-      about: 'истина → сразу x², X = 0',
-      expect: { x: 0 }
+      name: 'K x=0 при X = 0: условие выполнено, адрес не воспринимается', model: 'b3-34',
+      prog: [0x0D, 0xE1, 0x01, 0x50], regs: { 1: 4 },
+      about: 'истина → ip + 1, сразу цифра 1 → X = 1; при лжи было бы modAddr(4, 1) = 3 и X = 0',
+      expect: { x: 1 }
     },
     {
       name: 'K x=0 при X = 5: условие не выполнено', model: 'b3-34',
@@ -341,7 +341,7 @@
     { name: '↔: обмен X и Y', model: 'b3-34', prog: [0x02, 0x0E, 0x03, 0x14, 0x50], expect: { x: 2 } },
     { name: '10^x при X = 2', model: 'b3-34', prog: [0x02, 0x15, 0x50], expect: { x: 100 } },
     { name: 'e^x при X = 1', model: 'b3-34', prog: [0x01, 0x16, 0x50], expect: { x: 2.7182818 } },
-    { name: 'lg 100 = 2', model: 'b3-34', prog: [0x01, 0x00, 0x17, 0x50], expect: { x: 2 } },
+    { name: 'lg 100 = 2', model: 'b3-34', prog: [0x01, 0x00, 0x00, 0x17, 0x50], about: 'вводится 100: цифры 1, 0, 0', expect: { x: 2 } },
     { name: 'ln после e^x возвращает 1', model: 'b3-34', prog: [0x01, 0x16, 0x18, 0x50], expect: { x: 1 } },
     { name: 'π', model: 'b3-34', prog: [0x20, 0x50], expect: { x: 3.1415927 } },
     { name: '√9 = 3', model: 'b3-34', prog: [0x09, 0x21, 0x50], expect: { x: 3 } },
