@@ -45,8 +45,8 @@
 
 <p class="note">Прогон выполняется в браузере, ничего никуда не отправляется. Если таблица не заполнилась — проверь, что рядом лежат <code>core.js</code> и <code>profiles.js</code>.</p>
 
-<script src="profiles.js?v=5"></script>
-<script src="core.js?v=5"></script>
+<script src="profiles.js?v=6"></script>
+<script src="core.js?v=6"></script>
 <script>
 (function () {
   'use strict';
@@ -92,6 +92,12 @@
     if (typeof MKProfiles.formatAddr === 'function') {
       var a = MKProfiles.formatAddr(104, 'mk-52');
       if (a !== '-4') bad.push('formatAddr(104, mk-52) = "' + a + '", ожидалось "-4"');
+      var b = MKProfiles.formatAddr(100, 'b3-34');
+      if (b !== '--') bad.push('formatAddr(100, b3-34) = "' + b + '", ожидалось "--" (выше 99 у линии 34 адресов нет)');
+    }
+    if (typeof MKProfiles.parseAddr === 'function') {
+      var c = MKProfiles.parseAddr('-4', 'mk-52');
+      if (c !== 104) bad.push('parseAddr("-4", mk-52) = ' + c + ', ожидалось 104');
     }
     if (bad.length) {
       staleEl.innerHTML = '<div class="warn"><b>Загружена старая копия файлов.</b><br>' +
@@ -126,13 +132,15 @@
       name: 'Стоп по С/П', model: 'b3-34', prog: [0x05, 0x50],
       expect: { x: 5 }
     },
+
+    // K-функции есть у всей линии 34: и у Б3-34, и у МК-52.
     {
-      name: 'Б3-34: K |x| даёт ЕГГ0Г', model: 'b3-34', prog: [0x31, 0x50], x: -5,
-      expect: { err: true }
+      name: 'Б3-34: K |x| при X = −5', model: 'b3-34', prog: [0x31, 0x50], x: -5,
+      expect: { x: 5 }
     },
     {
-      name: 'Б3-34: K °→′″ даёт ЕГГ0Г', model: 'b3-34', prog: [0x2A, 0x50], x: 1.523,
-      expect: { err: true }
+      name: 'Б3-34: K °→′″ при X = 1,523', model: 'b3-34', prog: [0x2A, 0x50], x: 1.523,
+      expect: { x: 1.875 }
     },
     {
       name: 'МК-52: K |x| при X = −5', model: 'mk-52', prog: [0x31, 0x50], x: -5,
@@ -146,37 +154,55 @@
       name: 'МК-52: K °←′″ при X = 1,875', model: 'mk-52', prog: [0x30, 0x50], x: 1.875,
       expect: { x: 1.523 }
     },
+
+    // Пределы моделей
     {
-      name: 'Б3-34: программа не длиннее 98 шагов', model: 'b3-34', prog: [], meta: 'progLen',
-      expect: { meta: 'progLen', value: 98 }
+      name: 'Б3-34: программа не длиннее 98 шагов', model: 'b3-34', meta: 'progLen',
+      expect: { meta: true, value: 98 }
     },
     {
-      name: 'МК-52: программа 105 шагов', model: 'mk-52', prog: [], meta: 'progLen',
-      expect: { meta: 'progLen', value: 105 }
+      name: 'МК-52: программа 105 шагов', model: 'mk-52', meta: 'progLen',
+      expect: { meta: true, value: 105 }
     },
     {
-      name: 'Формат адреса 104 у МК-52', model: 'mk-52', prog: [], meta: 'addr',
-      expect: { meta: 'addr', value: '-4' }
+      name: 'Б3-34: 14 регистров, R0…Rd', model: 'b3-34', meta: 'regCount',
+      expect: { meta: true, value: 14 }
     },
     {
-      name: 'Формат адреса 100 у Б3-34', model: 'b3-34', prog: [], meta: 'addr100',
-      expect: { meta: 'addr100', value: '100' }
+      name: 'МК-52: 15 регистров', model: 'mk-52', meta: 'regCount',
+      expect: { meta: true, value: 15 }
+    },
+
+    // Адреса
+    {
+      name: 'Формат адреса 104 у МК-52 — «-4»', model: 'mk-52', meta: 'addr104',
+      expect: { meta: true, value: '-4' }
     },
     {
-      name: 'Переход на адрес −4 у Б3-34 запрещён', model: 'b3-34', prog: [0x51, 0x0A, 0x04],
+      name: 'Формат адреса 100 у Б3-34 — «--»', model: 'b3-34', meta: 'addr100',
+      expect: { meta: true, value: '--' }
+    },
+    {
+      name: 'Разбор «-4» у МК-52 → 104', model: 'mk-52', meta: 'parse',
+      expect: { meta: true, value: 104 }
+    },
+    {
+      name: 'Разбор «-4» у Б3-34 → нет адреса', model: 'b3-34', meta: 'parse',
+      expect: { meta: true, value: null }
+    },
+
+    // Переходы
+    {
+      name: 'Переход на -4 у Б3-34 запрещён', model: 'b3-34', prog: [0x51, 0x0A, 0x04],
       expect: { err: true }
+    },
+    {
+      name: 'Переход на -4 у МК-52 разрешён', model: 'mk-52', prog: [0x51, 0x0A, 0x04],
+      expect: { err: false }
     },
     {
       name: 'Переход на адрес 10 у Б3-34', model: 'b3-34', prog: [0x51, 0x01, 0x00, 0x50],
       expect: { err: false }
-    },
-    {
-      name: 'Б3-34: 14 регистров, R0…Rd', model: 'b3-34', prog: [], meta: 'regCount',
-      expect: { meta: 'regCount', value: 14 }
-    },
-    {
-      name: 'МК-52: 15 регистров', model: 'mk-52', prog: [], meta: 'regCount',
-      expect: { meta: 'regCount', value: 15 }
     }
   ];
 
@@ -184,17 +210,13 @@
     var p = profile(c.model);
     if (!p) return { text: 'нет профиля ' + c.model, err: false };
 
-    if (c.meta === 'progLen') {
-      return { text: p.progLen, meta: true };
-    }
-    if (c.meta === 'regCount') {
-      return { text: p.regCount, meta: true };
-    }
-    if (c.meta === 'addr') {
-      return { text: MKProfiles.formatAddr(104, c.model), meta: true };
-    }
-    if (c.meta === 'addr100') {
-      return { text: MKProfiles.formatAddr(100, c.model), meta: true };
+    if (c.meta === 'progLen') return { text: p.progLen, meta: true };
+    if (c.meta === 'regCount') return { text: p.regCount, meta: true };
+    if (c.meta === 'addr104') return { text: MKProfiles.formatAddr(104, c.model), meta: true };
+    if (c.meta === 'addr100') return { text: MKProfiles.formatAddr(100, c.model), meta: true };
+    if (c.meta === 'parse') {
+      var v = MKProfiles.parseAddr('-4', c.model);
+      return { text: (v === null ? 'null' : v), meta: true, raw: v };
     }
 
     var ct;
@@ -208,23 +230,31 @@
     }
 
     var st = ct.ST || {};
-    var hasErr = !!(st.error || st.err);
-    if (hasErr) return { text: 'ЕГГ0Г', err: true };
+    if (st.error || st.err) return { text: 'ЕГГ0Г', err: true };
     return { text: 'X = ' + fmt(st.X), x: st.X, err: false };
   }
 
   function passes(c, got) {
     var e = c.expect;
-    if (e.meta) return String(got.text) === String(e.value);
-    if (e.err) return got.err === true;
+    if (e.meta) {
+      if (c.meta === 'parse') {
+        var want = (e.value === null ? null : e.value);
+        var have = (got.raw === undefined ? got.text : got.raw);
+        return String(want) === String(have);
+      }
+      return String(got.text) === String(e.value);
+    }
+    if (e.err === true) return got.err === true;
+    if (e.err === false) return got.err === false;
     if (e.x !== undefined) return !got.err && Math.abs((got.x || 0) - e.x) < 1e-6;
     return false;
   }
 
   function expectText(c) {
     var e = c.expect;
-    if (e.meta) return String(e.value);
-    if (e.err) return 'ЕГГ0Г';
+    if (e.meta) return (e.value === null ? 'null' : String(e.value));
+    if (e.err === true) return 'ЕГГ0Г';
+    if (e.err === false) return 'без ошибки';
     if (e.x !== undefined) return 'X = ' + fmt(e.x);
     return '—';
   }
@@ -245,7 +275,7 @@
         '<td class="mark ' + (ok ? 'ok' : 'bad') + '">' + (ok ? '✓' : '✗') + '</td>' +
         '<td>' + c.name + '</td>' +
         '<td>' + c.model + '</td>' +
-        '<td class="mono">' + (c.prog.length ? codeStr(c.prog) : '—') + '</td>' +
+        '<td class="mono">' + (c.prog && c.prog.length ? codeStr(c.prog) : '—') + '</td>' +
         '<td>' + expectText(c) + '</td>' +
         '<td>' + got.text + '</td>';
       rowsEl.appendChild(tr);
