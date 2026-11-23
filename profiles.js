@@ -1,5 +1,5 @@
 /* profiles.js — модели линии Б3-34 и таблица кодов команд.
-   Проект pmk52, 23.11.2026.
+   Проект pmk52, 24.11.2026. Ревизия 3.
 
    Линия этого проекта: Б3-34 → МК-54 → МК-52 → ext52.
    Профиль МК-61 сюда НЕ входит: линия 61-го живёт отдельно,
@@ -17,6 +17,15 @@
 
    Принцип: команда, которой нет в таблице модели, не выполняется —
    она помечается как неизвестная, а не додумывается.
+
+   РЕВИЗИЯ 3 (что изменилось и почему):
+   1. Адрес выше 99 записывается как «•» в ПЕРВОЙ ячейке и цифра 0…4 во второй
+      (было: «A0» одной ячейкой). Формат отображения — -0…-4.
+      В профилях для этого теперь есть addrHighFirst / addrHighLast:
+      без них formatAddr вырождался в «--».
+   2. progLen у МК-52 = 105: 512 — объём ППЗУ (внешние модули), а не программы.
+   3. parseAddr понимает и новый «-4», и старый «A4» — чтобы ранее
+      сохранённые тексты не ломались.
 */
 (function (global) {
   'use strict';
@@ -165,6 +174,10 @@
   /* Модели линии Б3-34                                                  */
   /* ------------------------------------------------------------------ */
 
+  // Общий предел старших адресов линии 34: 100…104 = «•» + цифра.
+  var ADDR_HIGH_FIRST = 100;
+  var ADDR_HIGH_LAST = 104;
+
   var PROFILES = {
     'b3-34': {
       id: 'b3-34',
@@ -194,15 +207,19 @@
       id: 'mk-52',
       title: 'МК-52',
       family: 'Б3-34',
-      progLen: 512,
+      // 512 — это объём ППЗУ (внешние модули), а не программной памяти.
+      // Сама программа — те же 105 шагов, что и у линии 34.
+      progLen: 105,
       regCount: 15,
       maxDig: 8,
       nop: NOP,
       indirect: true,
       addrHigh: true,
-      addrNote: 'как в команде задаётся адрес больше 99 — уточнить по руководству',
+      addrHighFirst: ADDR_HIGH_FIRST,
+      addrHighLast: ADDR_HIGH_LAST,
+      addrNote: 'адреса 100…104 задаются «•» в первой ячейке и цифрой 0…4 во второй',
       regNote: 'число регистров уточнить по руководству',
-      notes: 'Заводское расширение линии Б3-34: те же команды, память до 512 шагов, ' +
+      notes: 'Заводское расширение линии Б3-34: те же команды, адреса до 104, ' +
              'поддерживает внешние модули ППЗУ.'
     },
     'ext52': {
@@ -217,6 +234,8 @@
       nop: NOP,
       indirect: true,
       addrHigh: true,
+      addrHighFirst: ADDR_HIGH_FIRST,
+      addrHighLast: ADDR_HIGH_LAST,
       addrNote: 'способ адресации выше 99 не утверждён: страницы либо двухбайтовый адрес',
       notes: 'Наша импровизация как продолжение линии Б3-34, а не историческая модель. ' +
              'Планируется: банки регистров, страницы программной памяти, блоки ППЗУ. ' +
@@ -265,24 +284,38 @@
     return (c && typeof c.reg === 'number') ? c.reg : null;
   }
 
-  // Адрес линии 34: только 00…99. Старшие адреса появятся, когда
-  // будет решён способ адресации у МК-52 и ext52.
+  // Адрес линии 34: 00…99, а при addrHigh — ещё и 100…104.
+  // Запись старшего адреса: «•4» в команде, отображение: «-4».
   function formatAddr(n, model) {
     var p = PROFILES[model] || PROFILES[DEFAULT_MODEL];
-    if (typeof n !== 'number' || n < 0) return '--';
+    if (typeof n !== 'number' || !isFinite(n)) return '--';
+    n = Math.round(n);
+    if (n < 0) return '--';
     if (n < 100) return (n < 10 ? '0' : '') + n;
-    if (p.addrHigh && typeof p.addrHighFirst === 'number' &&
+    if (p.addrHigh &&
+        typeof p.addrHighFirst === 'number' &&
+        typeof p.addrHighLast === 'number' &&
         n >= p.addrHighFirst && n <= p.addrHighLast) {
-      return 'A' + (n - p.addrHighFirst);
+      return '-' + (n - p.addrHighFirst);
     }
     return '--';
   }
 
   function parseAddr(text, model) {
-    var s = String(text).replace(/\s+/g, '').toUpperCase();
+    var s = String(text == null ? '' : text).replace(/\s+/g, '').toUpperCase();
     var p = PROFILES[model] || PROFILES[DEFAULT_MODEL];
-    if (/^\d{1,2}$/.test(s)) return parseInt(s, 10);
-    if (p.addrHigh && typeof p.addrHighFirst === 'number' && /^A\d$/.test(s)) {
+    var high = (p.addrHigh &&
+                typeof p.addrHighFirst === 'number' &&
+                typeof p.addrHighLast === 'number');
+
+    if (/^\d{1,2}$/.test(s)) {
+      var v = parseInt(s, 10);
+      return v <= 99 ? v : null;
+    }
+    if (!high) return null;
+
+    // Новый вид: -0…-4. Старый: A0…A4 (и •0…•4 на всякий случай).
+    if (/^[-−•A]\d$/.test(s)) {
       var n = p.addrHighFirst + parseInt(s.charAt(1), 10);
       return n <= p.addrHighLast ? n : null;
     }
@@ -318,6 +351,8 @@
     NOP: NOP,
     REG_CHARS: REG_CHARS,
     DEFAULT_MODEL: DEFAULT_MODEL,
+    ADDR_HIGH_FIRST: ADDR_HIGH_FIRST,
+    ADDR_HIGH_LAST: ADDR_HIGH_LAST,
     PROFILES: PROFILES,
     get: get,
     list: list,
