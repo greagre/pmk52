@@ -191,7 +191,7 @@
       expect: { meta: true, value: null }
     },
 
-    // Переходы
+    // Переходы: пределы адресов
     {
       name: 'Переход на -4 у Б3-34 запрещён', model: 'b3-34', prog: [0x51, 0x0A, 0x04],
       expect: { err: true }
@@ -203,12 +203,98 @@
     {
       name: 'Переход на адрес 10 у Б3-34', model: 'b3-34', prog: [0x51, 0x01, 0x00, 0x50],
       expect: { err: false }
+    },
+
+    // ---- Переходы и подпрограммы ----
+    {
+      name: 'БП вперёд занимает три ячейки',
+      model: 'b3-34',
+      prog: [0x51, 0x04, 0x00, 0x09, 0x07, 0x50],
+      about: 'адрес 4 → цифра 7; при чтении из двух ячеек было бы «97»',
+      expect: { x: 7 }
+    },
+    {
+      name: 'БП: адрес из двух ячеек читается верно',
+      model: 'b3-34',
+      prog: [0x51, 0x01, 0x02],
+      api: 'jumpAddr',
+      at: 0,
+      about: 'jumpAddr(0) должен вернуть 12',
+      expect: { text: '12' }
+    },
+    {
+      name: 'ПП → В/О: возврат на ip + 3',
+      model: 'b3-34',
+      prog: [0x07, 0x53, 0x05, 0x00, 0x50, 0x52],
+      about: 'вызов из ячейки 1, возврат на 4, там С/П',
+      expect: { x: 7 }
+    },
+    {
+      name: 'Два вложенных ПП',
+      model: 'b3-34',
+      prog: [0x07, 0x53, 0x05, 0x00, 0x50, 0x53, 0x09, 0x00, 0x52, 0x52],
+      about: 'глубина 2: 1 → 5 → 9, затем 8 → 4 → стоп',
+      expect: { x: 7 }
+    },
+    {
+      name: 'Шестой вложенный ПП — ЕГГ0Г',
+      model: 'b3-34',
+      prog: [0x53, 0x00, 0x00],
+      about: 'стек возврата ограничен пятью разрядами',
+      expect: { err: true }
+    },
+    {
+      name: 'F L0: пять итераций с переходом назад',
+      model: 'b3-34',
+      prog: [0x05, 0x40, 0x0D, 0x01, 0x10, 0x5D, 0x03, 0x00, 0x50],
+      about: 'R0 = 5, в цикле X + 1; выход по нулю → X = 5',
+      expect: { x: 5 }
+    },
+    {
+      name: 'К БП: модификация адреса в R1',
+      model: 'b3-34',
+      prog: [0x05, 0x41, 0x81, 0x09, 0x07, 0x50],
+      about: 'R1 = 5, модификация −1 → адрес 4, там цифра 7',
+      expect: { x: 7 }
+    },
+    {
+      name: 'К ПП: возврат из косвенного вызова',
+      model: 'b3-34',
+      prog: [0x05, 0x41, 0xA1, 0x50, 0x52],
+      about: 'R1 = 5 → адрес 4 (В/О) → возврат на 3 (С/П)',
+      expect: { x: 5 }
+    },
+    {
+      name: 'F x≥0 при X = 0: условие выполнено',
+      model: 'b3-34',
+      prog: [0x0D, 0x59, 0x05, 0x00, 0x50, 0x07, 0x50],
+      about: 'истина → адрес не воспринимается, сразу С/П с X = 0',
+      expect: { x: 0 }
+    },
+    {
+      name: 'F x<0 при X = 0: условие не выполнено',
+      model: 'b3-34',
+      prog: [0x0D, 0x5C, 0x05, 0x00, 0x50, 0x07, 0x50],
+      about: 'ложь → переход на 5, там цифра 7',
+      expect: { x: 7 }
     }
   ];
 
   function runCase(c) {
     var p = profile(c.model);
     if (!p) return { text: 'нет профиля ' + c.model, err: false };
+
+    if (c.api === 'jumpAddr') {
+      var ctj;
+      try {
+        ctj = MKCore.create(p);
+        ctj.setProgram(c.prog);
+      } catch (e) {
+        return { text: 'сбой: ' + e.message, err: true };
+      }
+      var a = ctj.jumpAddr(c.at || 0);
+      return { text: String(a), raw: a, meta: true };
+    }
 
     if (c.meta === 'progLen') return { text: p.progLen, meta: true };
     if (c.meta === 'regCount') return { text: p.regCount, meta: true };
@@ -224,7 +310,7 @@
       ct = MKCore.create(p);
       ct.setProgram(c.prog);
       if (c.x !== undefined) ct.setX(c.x);
-      ct.run(500);
+      ct.run(c.limit || 500);
     } catch (e) {
       return { text: 'сбой: ' + e.message, err: true };
     }
@@ -236,6 +322,7 @@
 
   function passes(c, got) {
     var e = c.expect;
+    if (e.text !== undefined) return String(got.text) === String(e.text);
     if (e.meta) {
       if (c.meta === 'parse') {
         var want = (e.value === null ? null : e.value);
@@ -252,6 +339,7 @@
 
   function expectText(c) {
     var e = c.expect;
+    if (e.text !== undefined) return e.text;
     if (e.meta) return (e.value === null ? 'null' : String(e.value));
     if (e.err === true) return 'ЕГГ0Г';
     if (e.err === false) return 'без ошибки';
