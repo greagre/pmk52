@@ -8,6 +8,7 @@
   :root { color-scheme: light dark; }
   body { margin:0; padding:16px 12px 40px; font:15px/1.45 -apple-system, "Segoe UI", Roboto, Arial, sans-serif; background:#f6f7f8; color:#1a1d21; }
   h1 { font-size:18px; margin:0 0 4px; }
+  h2 { font-size:14px; margin:22px 0 8px; color:#4c555e; text-transform:uppercase; letter-spacing:.03em; }
   .sub { color:#5b636c; font-size:13px; margin:0 0 14px; }
   .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 14px; }
   button { font:inherit; font-weight:600; padding:10px 18px; border-radius:10px; border:0; background:#2f6bdb; color:#fff; }
@@ -41,8 +42,9 @@
 </div>
 
 <div class="debt">
-  <b>Известное расхождение с оригиналом.</b> Клавиша X→П не завершает набор числа: набрал 5, нажал X→П, нажал 7 — в ядре получается 57, у настоящего ПМК было бы 7.
-  Кейс-долг внизу таблицы помечен фиолетовым и в счёт не входит. Поведение ядра пока не менялось.
+  <b>Известные расхождения (долги, в счёт не входят):</b><br>
+  1. Клавиша X→П не завершает набор числа: набрал 5, нажал X→П, нажал 7 — в ядре получается 57, у настоящего ПМК было бы 7.<br>
+  2. Коды <span style="font-family:ui-monospace,monospace">4F</span> и <span style="font-family:ui-monospace,monospace">6F</span> по таблице означают R0 (подпись так и строится), но при выполнении дают ЕГГ0Г: проверка «номер регистра внутри профиля» отсекает 15 раньше, чем сработало бы правило F → R0.
 </div>
 
 <div class="bar">
@@ -59,8 +61,8 @@
 
 <p class="note">Прогон выполняется в браузере, ничего никуда не отправляется. Если таблица не заполнилась — проверь, что рядом лежат <code>core.js</code> и <code>profiles.js</code>.</p>
 
-<script src="profiles.js?v=9"></script>
-<script src="core.js?v=9"></script>
+<script src="profiles.js?v=10"></script>
+<script src="core.js?v=10"></script>
 <script>
 (function () {
   'use strict';
@@ -242,6 +244,169 @@
       expect: { x: 7 }
     },
 
+    /* ---- прямые условия: обе ветки каждого ---- */
+    {
+      name: 'F x≠0 при X = 5: условие выполнено', model: 'b3-34',
+      prog: [0x05, 0x57, 0x00, 0x04, 0x22, 0x50],
+      about: 'истина → адрес 4 не воспринимается, сразу x²',
+      expect: { x: 25 }
+    },
+    {
+      name: 'F x≠0 при X = 0: условие не выполнено', model: 'b3-34',
+      prog: [0x0D, 0x57, 0x00, 0x05, 0x22, 0x07, 0x50],
+      about: 'ложь → переход на 5, там цифра 7',
+      expect: { x: 7 }
+    },
+    {
+      name: 'F x≥0 при X = −5: условие не выполнено', model: 'b3-34',
+      prog: [0x59, 0x00, 0x05, 0x22, 0x0D, 0x07, 0x50], x: -5,
+      about: 'ложь → переход на 5, там Cx и цифра 7',
+      expect: { x: 7 }
+    },
+    {
+      name: 'F x<0 при X = −5: условие выполнено', model: 'b3-34',
+      prog: [0x5C, 0x00, 0x04, 0x22, 0x50], x: -5,
+      about: 'истина → адрес не воспринимается, сразу x²',
+      expect: { x: 25 }
+    },
+    {
+      name: 'F x=0 при X = 0: условие выполнено', model: 'b3-34',
+      prog: [0x0D, 0x5E, 0x00, 0x04, 0x07, 0x50],
+      about: 'истина → адрес 4 не воспринимается, сразу цифра 7',
+      expect: { x: 7 }
+    },
+    {
+      name: 'F x=0 при X = 5: условие не выполнено', model: 'b3-34',
+      prog: [0x05, 0x5E, 0x00, 0x05, 0x22, 0x0D, 0x07, 0x50],
+      about: 'ложь → переход на 5, там Cx и цифра 7',
+      expect: { x: 7 }
+    },
+
+    /* ---- косвенные условия: ветка «истина» для 0x90, обе для 0xC0 и 0xE0 ---- */
+    {
+      name: 'K x≥0 при X = 5: условие выполнено', model: 'b3-34',
+      prog: [0x90, 0x22, 0x50], regs: { 1: 5 }, x: 5,
+      about: 'истина → сразу x², R1 не трогается',
+      expect: { x: 25 }
+    },
+    {
+      name: 'K x<0 при X = 0: условие не выполнено', model: 'b3-34',
+      prog: [0x0D, 0xC1, 0x22, 0x07, 0x50], regs: { 1: 4 },
+      about: 'ложь → modAddr(4, 1) = 3, там цифра 7',
+      expect: { x: 7 }
+    },
+    {
+      name: 'K x<0 при X = −5: условие выполнено', model: 'b3-34',
+      prog: [0xC1, 0x22, 0x50], regs: { 1: 4 }, x: -5,
+      about: 'истина → сразу x², R1 не трогается',
+      expect: { x: 25 }
+    },
+    {
+      name: 'K x=0 при X = 0: условие выполнено', model: 'b3-34',
+      prog: [0x0D, 0xE1, 0x22, 0x07, 0x50], regs: { 1: 4 },
+      about: 'истина → сразу x², X = 0',
+      expect: { x: 0 }
+    },
+    {
+      name: 'K x=0 при X = 5: условие не выполнено', model: 'b3-34',
+      prog: [0x05, 0xE1, 0x22, 0x0D, 0x50], regs: { 1: 4 },
+      about: 'ложь → modAddr(4, 1) = 3, там Cx',
+      expect: { x: 0 }
+    },
+
+    /* ---- циклы L1–L3 ---- */
+    {
+      name: 'F L1: три итерации по R1', model: 'b3-34',
+      prog: [0x0D, 0x01, 0x10, 0x5B, 0x00, 0x01, 0x50], regs: { 1: 3 },
+      about: 'счётчик в R1, в цикле X + 1, выход по нулю',
+      expect: { x: 3 }
+    },
+    {
+      name: 'F L2: три итерации по R2', model: 'b3-34',
+      prog: [0x0D, 0x01, 0x10, 0x58, 0x00, 0x01, 0x50], regs: { 2: 3 },
+      about: 'счётчик в R2, в цикле X + 1',
+      expect: { x: 3 }
+    },
+    {
+      name: 'F L3: три итерации по R3', model: 'b3-34',
+      prog: [0x0D, 0x01, 0x10, 0x5A, 0x00, 0x01, 0x50], regs: { 3: 3 },
+      about: 'счётчик в R3, в цикле X + 1',
+      expect: { x: 3 }
+    },
+
+    /* ---- математика: каждая функция ---- */
+    { name: 'Смена знака /-/', model: 'b3-34', prog: [0x05, 0x0B, 0x50], expect: { x: -5 } },
+    { name: 'ВП: 1 ВП 3 = 1000', model: 'b3-34', prog: [0x01, 0x0C, 0x03, 0x50], expect: { x: 1000 } },
+    { name: 'Вx: возврат прежнего X', model: 'b3-34', prog: [0x03, 0x22, 0x0F, 0x50], about: '3 → x² = 9, затем Вx даёт 3', expect: { x: 3 } },
+    { name: '↔: обмен X и Y', model: 'b3-34', prog: [0x02, 0x0E, 0x03, 0x14, 0x50], expect: { x: 2 } },
+    { name: '10^x при X = 2', model: 'b3-34', prog: [0x02, 0x15, 0x50], expect: { x: 100 } },
+    { name: 'e^x при X = 1', model: 'b3-34', prog: [0x01, 0x16, 0x50], expect: { x: 2.7182818 } },
+    { name: 'lg 100 = 2', model: 'b3-34', prog: [0x01, 0x00, 0x17, 0x50], expect: { x: 2 } },
+    { name: 'ln после e^x возвращает 1', model: 'b3-34', prog: [0x01, 0x16, 0x18, 0x50], expect: { x: 1 } },
+    { name: 'π', model: 'b3-34', prog: [0x20, 0x50], expect: { x: 3.1415927 } },
+    { name: '√9 = 3', model: 'b3-34', prog: [0x09, 0x21, 0x50], expect: { x: 3 } },
+    { name: 'x² при X = 7', model: 'b3-34', prog: [0x07, 0x22, 0x50], expect: { x: 49 } },
+    { name: '1/x при X = 4', model: 'b3-34', prog: [0x04, 0x23, 0x50], expect: { x: 0.25 } },
+    { name: 'x^y: 2 в степени 3', model: 'b3-34', prog: [0x02, 0x0E, 0x03, 0x24, 0x50], expect: { x: 8 } },
+    { name: 'F◯: сдвиг стека', model: 'b3-34', prog: [0x02, 0x0E, 0x03, 0x25, 0x50], about: 'X = 3, Y = 2 → после сдвига X = 2', expect: { x: 2 } },
+    { name: 'arcsin 0,5 = 30°', model: 'b3-34', prog: [0x00, 0x0A, 0x05, 0x19, 0x50], expect: { x: 30 } },
+    { name: 'arccos 0,5 = 60°', model: 'b3-34', prog: [0x00, 0x0A, 0x05, 0x1A, 0x50], expect: { x: 60 } },
+    { name: 'arctg 1 = 45°', model: 'b3-34', prog: [0x01, 0x1B, 0x50], expect: { x: 45 } },
+    { name: 'sin 30° = 0,5', model: 'b3-34', prog: [0x03, 0x00, 0x1C, 0x50], angle: 'deg', expect: { x: 0.5 } },
+    { name: 'cos 60° = 0,5', model: 'b3-34', prog: [0x06, 0x00, 0x1D, 0x50], angle: 'deg', expect: { x: 0.5 } },
+    { name: 'tg 45° = 1', model: 'b3-34', prog: [0x04, 0x05, 0x1E, 0x50], angle: 'deg', expect: { x: 1 } },
+    { name: 'Переключатель ГРД: sin 30 град', model: 'b3-34', prog: [0x03, 0x00, 0x1C, 0x50], angle: 'grad', about: '30 град = 27° → 0,4539905', expect: { x: 0.4539905 } },
+    { name: 'Переключатель Р: sin 0,5 рад', model: 'b3-34', prog: [0x00, 0x0A, 0x05, 0x1C, 0x50], angle: 'rad', expect: { x: 0.4794255 } },
+
+    /* ---- K-функции: остальные ---- */
+    { name: 'K ЗН при X = −5', model: 'b3-34', prog: [0x32, 0x50], x: -5, expect: { x: -1 } },
+    { name: 'K [x] при X = −1,2', model: 'b3-34', prog: [0x34, 0x50], x: -1.2, about: 'целая часть к нулю → −1', expect: { x: -1 } },
+    { name: 'K {x} при X = −1,2', model: 'b3-34', prog: [0x35, 0x50], x: -1.2, expect: { x: -0.2 } },
+    { name: 'K max из 5 и 3', model: 'b3-34', prog: [0x05, 0x0E, 0x03, 0x36, 0x50], expect: { x: 5 } },
+    { name: 'K max: ноль считается наибольшим', model: 'b3-34', prog: [0x00, 0x0E, 0x03, 0x36, 0x50], expect: { x: 0 } },
+    { name: 'K СЧ: значение в интервале (0, 1)', model: 'b3-34', prog: [0x3B, 0x50], expect: { range: [0, 1] } },
+    { name: 'Y→X копирует Y', model: 'b3-34', prog: [0x02, 0x0E, 0x05, 0x3E, 0x50], expect: { x: 2 } },
+
+    /* ---- то, что обязано давать ЕГГ0Г ---- */
+    { name: 'K − даёт ЕГГ0Г', model: 'b3-34', prog: [0x27, 0x50], expect: { err: true } },
+    { name: 'K × даёт ЕГГ0Г', model: 'b3-34', prog: [0x28, 0x50], expect: { err: true } },
+    { name: 'K ÷ даёт ЕГГ0Г', model: 'b3-34', prog: [0x29, 0x50], expect: { err: true } },
+    { name: 'K AND даёт ЕГГ0Г', model: 'b3-34', prog: [0x37, 0x50], expect: { err: true } },
+    { name: 'К 1 даёт ЕГГ0Г', model: 'b3-34', prog: [0x55, 0x50], expect: { err: true } },
+
+    /* ---- регистры ---- */
+    {
+      name: 'П→x R1 после X→П 1', model: 'b3-34',
+      prog: [0x07, 0x41, 0x0D, 0x61, 0x50],
+      about: 'R1 = 7, обнуление X, чтение R1 → 7',
+      expect: { x: 7 }
+    },
+    {
+      name: 'МК-52: запись и чтение R14 (код 4E/6E)', model: 'mk-52',
+      prog: [0x05, 0x4E, 0x0D, 0x6E, 0x50],
+      about: 'у МК-52 пятнадцать регистров, R14 входит',
+      expect: { x: 5 }
+    },
+    {
+      name: 'Б3-34: запись в R14 — ЕГГ0Г', model: 'b3-34',
+      prog: [0x05, 0x4E, 0x50],
+      about: 'у линии 34 регистров 14, R14 нет',
+      expect: { err: true }
+    },
+    {
+      name: 'К x→П 1: модификация номера регистра', model: 'b3-34',
+      prog: [0x07, 0xB1, 0x63, 0x50], regs: { 1: 4 },
+      about: 'R1 = 4 → modReg даёт 3, значение уходит в R3, чтение подтверждает',
+      expect: { x: 7 }
+    },
+    {
+      name: 'К П→x 1: чтение по модифицированному номеру', model: 'b3-34',
+      prog: [0xD1, 0x50], regs: { 1: 4, 3: 5 },
+      about: 'R1 = 4 → номер 3 → в X попадает R3 = 5',
+      expect: { x: 5 }
+    },
+
+    /* ---- долги: известные расхождения, в счёт не входят ---- */
     {
       name: 'Ввод после X→П продолжается (так в ядре)', model: 'b3-34',
       prog: [0x05, 0x41, 0x07, 0x50],
@@ -253,6 +418,18 @@
       prog: [0x05, 0x41, 0x07, 0x50],
       about: 'у настоящего ПМК после X→П цифра 7 начинает новое число → X = 7',
       expect: { x: 7 }
+    },
+    {
+      name: 'Код 4F — это R0 (долг: подпись верна, выполнение нет)', model: 'b3-34', known: true,
+      prog: [0x05, 0x4F, 0x50],
+      about: 'по таблице F означает R0, cmdName так и подписывает, но exec отсекает lo = 15 → ЕГГ0Г, ожидается X = 5',
+      expect: { x: 5 }
+    },
+    {
+      name: 'Код 6F — это R0 при чтении (долг)', model: 'b3-34', known: true,
+      prog: [0x05, 0x4F, 0x0D, 0x6F, 0x50],
+      about: 'чтение R0 через 6F: сейчас ЕГГ0Г, ожидается X = 5',
+      expect: { x: 5 }
     }
   ];
 
@@ -285,6 +462,7 @@
     try {
       ct = MKCore.create(p);
       ct.setProgram(c.prog);
+      if (c.angle) ct.setAngle(c.angle);
       if (c.regs) {
         Object.keys(c.regs).forEach(function (k) {
           ct.setRegister(Number(k), c.regs[k]);
@@ -313,6 +491,10 @@
     }
     if (e.err === true) return got.err === true;
     if (e.err === false) return got.err === false;
+    if (e.range) {
+      if (got.err || typeof got.x !== 'number') return false;
+      return got.x > e.range[0] && got.x < e.range[1];
+    }
     if (e.x !== undefined) return !got.err && Math.abs((got.x || 0) - e.x) < 1e-6;
     return false;
   }
@@ -323,6 +505,7 @@
     if (c.meta) return (e.value === null ? 'null' : String(e.value));
     if (e.err === true) return 'ЕГГ0Г';
     if (e.err === false) return 'без ошибки';
+    if (e.range) return 'между ' + fmt(e.range[0]) + ' и ' + fmt(e.range[1]);
     if (e.x !== undefined) return 'X = ' + fmt(e.x);
     return '—';
   }
@@ -356,6 +539,7 @@
       else mark = ok ? '✓' : '✗';
 
       var noteBlock = c.about ? '<br><span style="color:#6b7280;font-size:12px">' + c.about + '</span>' : '';
+      if (c.angle) noteBlock += '<br><span style="color:#6b7280;font-size:12px">угол: ' + c.angle + '</span>';
       if (c.known) noteBlock += '<br><span style="color:#7c5cbf;font-size:12px">долг: ' + (ok ? 'уже закрыт' : 'ещё не исправлено') + '</span>';
 
       tr.innerHTML =
