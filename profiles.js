@@ -1,5 +1,10 @@
-/* profiles.js — модели ПМК и таблица кодов команд.
+/* profiles.js — модели линии Б3-34 и таблица кодов команд.
    Проект pmk52, 23.11.2026.
+
+   Линия этого проекта: Б3-34 → МК-54 → МК-52 → ext52.
+   Профиль МК-61 сюда НЕ входит: линия 61-го живёт отдельно,
+   в проекте greagre/pmk61. Не добавлять, иначе профиль окажется
+   в двух местах и версии разойдутся.
 
    Источник таблицы кодов: руководство по эксплуатации Б3-34 / МК-52 / МК-54 / МК-61
    и документ «Недокументированные возможности», приложение «Все команды»
@@ -157,7 +162,7 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Модели                                                              */
+  /* Модели линии Б3-34                                                  */
   /* ------------------------------------------------------------------ */
 
   var PROFILES = {
@@ -197,28 +202,14 @@
       addrHigh: true,
       addrNote: 'как в команде задаётся адрес больше 99 — уточнить по руководству',
       regNote: 'число регистров уточнить по руководству',
-      notes: 'Совместим с Б3-34 по системе команд, память расширена до 512 шагов, ' +
+      notes: 'Заводское расширение линии Б3-34: те же команды, память до 512 шагов, ' +
              'поддерживает внешние модули ППЗУ.'
     },
-    'mk-61': {
-      id: 'mk-61',
-      title: 'МК-61',
-      family: 'МК-61',
-      progLen: 105,
-      regCount: 15,
-      maxDig: 8,
-      nop: NOP,
-      indirect: true,
-      addrHigh: true,
-      addrHighFirst: 100,
-      addrHighLast: 104,
-      notes: 'Надмножество Б3-34: те же коды плюс косвенная адресация и Rе. ' +
-             'Адреса 100…104 задаются как A0…A4 («-0»…«-4» на индикаторе).'
-    },
-    'ext': {
-      id: 'ext',
-      title: 'EXT (наш профиль)',
+    'ext52': {
+      id: 'ext52',
+      title: 'EXT52 (наш профиль)',
       family: 'EXT',
+      experimental: true,
       progLen: 512,
       regCount: 15,
       regBanks: 4,
@@ -226,14 +217,18 @@
       nop: NOP,
       indirect: true,
       addrHigh: true,
-      notes: 'Расширение поверх МК-61: банки регистров, страницы программы. ' +
-             'Формат команд пока не утверждён — не использовать в интерфейсе.'
+      addrNote: 'способ адресации выше 99 не утверждён: страницы либо двухбайтовый адрес',
+      notes: 'Наша импровизация как продолжение линии Б3-34, а не историческая модель. ' +
+             'Планируется: банки регистров, страницы программной памяти, блоки ППЗУ. ' +
+             'Формат новых команд не утверждён — в интерфейс пока не выводить.'
     }
   };
 
   /* ------------------------------------------------------------------ */
   /* Вспомогательные функции                                             */
   /* ------------------------------------------------------------------ */
+
+  var DEFAULT_MODEL = 'b3-34';
 
   function cmd(code) {
     return CMD[code & 0xFF] || null;
@@ -270,12 +265,14 @@
     return (c && typeof c.reg === 'number') ? c.reg : null;
   }
 
-  // Адрес: 0…99 → «00»…«99»; 100…104 у МК-61 → «A0»…«A4»
+  // Адрес линии 34: только 00…99. Старшие адреса появятся, когда
+  // будет решён способ адресации у МК-52 и ext52.
   function formatAddr(n, model) {
-    var p = PROFILES[model] || PROFILES['mk-61'];
+    var p = PROFILES[model] || PROFILES[DEFAULT_MODEL];
     if (typeof n !== 'number' || n < 0) return '--';
     if (n < 100) return (n < 10 ? '0' : '') + n;
-    if (p.addrHigh && n >= p.addrHighFirst && n <= p.addrHighLast) {
+    if (p.addrHigh && typeof p.addrHighFirst === 'number' &&
+        n >= p.addrHighFirst && n <= p.addrHighLast) {
       return 'A' + (n - p.addrHighFirst);
     }
     return '--';
@@ -283,9 +280,9 @@
 
   function parseAddr(text, model) {
     var s = String(text).replace(/\s+/g, '').toUpperCase();
-    var p = PROFILES[model] || PROFILES['mk-61'];
+    var p = PROFILES[model] || PROFILES[DEFAULT_MODEL];
     if (/^\d{1,2}$/.test(s)) return parseInt(s, 10);
-    if (p.addrHigh && /^A\d$/.test(s)) {
+    if (p.addrHigh && typeof p.addrHighFirst === 'number' && /^A\d$/.test(s)) {
       var n = p.addrHighFirst + parseInt(s.charAt(1), 10);
       return n <= p.addrHighLast ? n : null;
     }
@@ -304,6 +301,11 @@
     return out;
   }
 
+  // Модели для вывода в интерфейсе (без экспериментальных)
+  function listStable() {
+    return list().filter(function (p) { return !p.experimental; });
+  }
+
   // Проверка «команда допустима в этой модели»
   function allowed(code, model) {
     var p = get(model);
@@ -315,9 +317,11 @@
   var MKProfiles = {
     NOP: NOP,
     REG_CHARS: REG_CHARS,
+    DEFAULT_MODEL: DEFAULT_MODEL,
     PROFILES: PROFILES,
     get: get,
     list: list,
+    listStable: listStable,
     cmd: cmd,
     name: name,
     isDouble: isDouble,
