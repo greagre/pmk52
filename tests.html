@@ -52,8 +52,8 @@
 
 <p class="note">Прогон выполняется в браузере, ничего никуда не отправляется. Если таблица не заполнилась — проверь, что рядом лежат <code>core.js</code> и <code>profiles.js</code>.</p>
 
-<script src="profiles.js?v=7"></script>
-<script src="core.js?v=7"></script>
+<script src="profiles.js?v=8"></script>
+<script src="core.js?v=8"></script>
 <script>
 (function () {
   'use strict';
@@ -192,8 +192,8 @@
     },
     {
       name: 'К БП: модификация адреса в R1', model: 'b3-34',
-      prog: [0x05, 0x41, 0x81, 0x09, 0x07, 0x50],
-      about: 'R1 = 5, модификация −1 → адрес 4, там цифра 7',
+      prog: [0x04, 0x41, 0x81, 0x0D, 0x07, 0x50],
+      about: 'R1 = 4, К БП 1 вычитает 1 → адрес 3, там Cx и цифра 7; без модификации было бы 47',
       expect: { x: 7 }
     },
     {
@@ -213,6 +213,12 @@
       prog: [0x0D, 0x5C, 0x00, 0x05, 0x50, 0x07, 0x50],
       about: 'ложь → переход на 5, там цифра 7',
       expect: { x: 7 }
+    },
+    {
+      name: 'Ввод после X→П продолжается (так в ядре)', model: 'b3-34',
+      prog: [0x05, 0x41, 0x07, 0x50],
+      about: 'X→П не завершает набор: 5, затем 7 дают 57',
+      expect: { x: 57 }
     }
   ];
 
